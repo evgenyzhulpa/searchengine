@@ -1,0 +1,30 @@
+indexing-settings:
+  sites:
+    - url: http://www.playback.ru/
+      name: PlayBack.ru
+    - url: https://ipfran.ru/
+      name: Ипф Ран
+#    - url: http://radiomv.ru/
+#      name: Милицейская волна
+#    - url: https://www.svetlovka.ru/
+#      name: Светловка
+
+search-settings:
+  user-agent: "TigerSearchBot"
+  referrer: "http://www.google.com"
+
+server:
+  port: 8080
+
+spring:
+  datasource:
+      username: root
+      password: girmo$45
+      url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true
+  jpa:
+      properties:
+        hibernate:
+          dialect: org.hibernate.dialect.MySQL8Dialect
+      hibernate:
+        ddl-auto: create-drop
+      show-sql: true

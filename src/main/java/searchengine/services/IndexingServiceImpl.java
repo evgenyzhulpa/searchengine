@@ -37,6 +37,7 @@ public class IndexingServiceImpl implements IndexingService {
     @Override
     public IndexingResponse startIndexing() {
         IndexingResponse response = new IndexingResponse();
+
         if (startIndexing) {
             response.setError("Индексация уже запущена");
             response.setResult(false);
@@ -61,7 +62,7 @@ public class IndexingServiceImpl implements IndexingService {
     private List<Site> getConfigurationSitesDataFromDB() {
         List<String> urlList = sitesList.getSites()
                 .stream()
-                .map(site -> site.getUrl())
+                .map(Site::getUrl)
                 .toList();
         return findByUrlIn(urlList);
     }

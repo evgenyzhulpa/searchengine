@@ -33,7 +33,6 @@ public class IndexingServiceImpl implements IndexingService {
     private boolean startIndexing;
     private boolean stopIndexing;
     private static final Logger logger = LogManager.getLogger("indexingServiceLogger");
-    private long startTime = System.currentTimeMillis();
 
     @Override
     public IndexingResponse startIndexing() {

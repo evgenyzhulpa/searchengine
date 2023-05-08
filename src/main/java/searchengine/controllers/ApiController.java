@@ -7,6 +7,8 @@ import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.services.IndexingService;
 import searchengine.services.StatisticsService;
 
+import java.io.IOException;
+
 @RestController
 @RequestMapping("/api")
 public class ApiController {
@@ -36,7 +38,11 @@ public class ApiController {
 
     @PostMapping("/indexPage")
     public ResponseEntity<IndexingResponse> indexPage(@RequestParam("url") String url) {
-        return ResponseEntity.ok(indexingService.indexPage(url));
+        try {
+            return ResponseEntity.ok(indexingService.indexPage(url));
+        } catch (IOException e) {
+            return ResponseEntity.badRequest().body(new IndexingResponse());
+        }
     }
 
 

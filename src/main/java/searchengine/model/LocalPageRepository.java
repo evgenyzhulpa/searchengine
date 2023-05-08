@@ -9,5 +9,5 @@ public interface LocalPageRepository {
     boolean isInPageList(Page page);
     List<Page> getPagesOfSite(Site site);
     void deletePagesAndLinksOfSite(Site site);
-
+    void deleteAllPagesAndLinks();
 }

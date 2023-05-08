@@ -23,10 +23,6 @@ public class HtmlParser {
         return responseConnection.url().getPath();
     }
 
-    public static String getPageAbsolutePath(Document document) throws IOException {Response responseConnection = getResponseConnection(document);
-        return document.location();
-    }
-
     private static Response getResponseConnection(Document document) {
         return document.connection().response();
     }

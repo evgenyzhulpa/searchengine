@@ -31,4 +31,8 @@ public class SitesList {
         }
     }
 
+    public int getSitesCount() {
+        return sites.size();
+    }
+
 }

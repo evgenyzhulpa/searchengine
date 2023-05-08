@@ -31,8 +31,9 @@ public class LemmaFinder {
             List<String> normalForms;
             String normalForm;
 
+            word = word.replaceAll("\\s", "");
             if (word.isBlank() || anyWordBaseBelongToParticle(word)) {
-                return lemmas;
+                continue;
             }
             normalForms = luceneMorphology.getNormalForms(word);
             normalForm = normalForms.get(0);
@@ -59,8 +60,10 @@ public class LemmaFinder {
     }
 
     private boolean isParticle(String word) {
-        for (String particleName : particlesNames) {
-            return word.contains(particleName);
+       for (String particleName : particlesNames) {
+            if (word.contains(particleName)) {
+                return true;
+            }
         }
         return false;
     }

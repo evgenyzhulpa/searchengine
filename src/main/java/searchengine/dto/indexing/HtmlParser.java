@@ -18,7 +18,7 @@ public class HtmlParser {
                 .get();
     }
 
-    public static String getPagePath(Document document) throws IOException {
+    public static String getPagePath(Document document) {
         Response responseConnection = getResponseConnection(document);
         return responseConnection.url().getPath();
     }
@@ -27,16 +27,16 @@ public class HtmlParser {
         return document.connection().response();
     }
 
-    public static int getStatusCode(Document document) throws IOException {
+    public static int getStatusCode(Document document) {
         Response responseConnection = getResponseConnection(document);
         return responseConnection.statusCode();
     }
 
-    public static String getContent(Document document) throws IOException {
+    public static String getContent(Document document) {
         return document.html();
     }
 
-    public static Elements getHtmlElements(Document document) throws IOException {
+    public static Elements getHtmlElements(Document document) {
         return document.getElementsByAttribute("href");
     }
 

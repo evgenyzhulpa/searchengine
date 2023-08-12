@@ -3,21 +3,15 @@ package searchengine.services;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import searchengine.config.SitesList;
 import searchengine.dto.statistics.DetailedStatisticsItem;
 import searchengine.dto.statistics.StatisticsData;
 import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.dto.statistics.TotalStatistics;
 import searchengine.model.*;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.time.temporal.Temporal;
-import java.time.temporal.TemporalField;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 @Service
 @RequiredArgsConstructor
@@ -62,6 +56,8 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         for(Site site : sites) {
             DetailedStatisticsItem item = new DetailedStatisticsItem();
+            Timestamp timestamp = Timestamp.valueOf(site.getStatusTime());
+            long millis = timestamp.getTime();
 
             item.setName(site.getName());
             item.setUrl(site.getUrl());
@@ -69,7 +65,7 @@ public class StatisticsServiceImpl implements StatisticsService {
             item.setLemmas(lemmaRepository.getSiteLemmasCount(site));
             item.setStatus(site.getStatus().toString());
             item.setError(site.getLastError());
-            item.setStatusTime(site.getStatusTime().toEpochSecond(ZoneOffset.MAX));
+            item.setStatusTime(millis);
             detailed.add(item);
         }
         return detailed;

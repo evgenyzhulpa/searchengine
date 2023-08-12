@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Vector;
 
 @Repository
 public interface PageRepository extends CrudRepository<Page, Integer> {
@@ -15,6 +16,7 @@ public interface PageRepository extends CrudRepository<Page, Integer> {
     int getSitePagesCount(Site site);
     @Query("select COUNT(*) from Page p")
     int getAllPagesCount();
-
+    @Query("select p.path from Page p where p.path in ?1 and p.site = ?2")
+    Vector<String> getPagePathsByUriListAndSite(List<String> uriList, Site site);
 
 }

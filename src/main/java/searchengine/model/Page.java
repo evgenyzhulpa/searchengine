@@ -3,9 +3,6 @@ package searchengine.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import org.jsoup.nodes.Document;
-import org.jsoup.select.Elements;
-
 import java.util.Set;
 
 @Entity
@@ -29,5 +26,9 @@ public class Page
     private Set<Index> indexes;
     @Transient
     private Set<String> childLinks;
+    @Transient
+    private float absoluteRelevance;
+    @Transient
+    private float relevance;
 
 }

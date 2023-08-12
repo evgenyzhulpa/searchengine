@@ -9,8 +9,7 @@ import java.util.Set;
 @Entity
 @Getter
 @Setter
-public class Lemma
-{
+public class Lemma {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
@@ -23,6 +22,5 @@ public class Lemma
     private int frequency;
     @OneToMany(mappedBy = "lemma", cascade = CascadeType.ALL)
     private Set<Index> indexes;
-
 
 }

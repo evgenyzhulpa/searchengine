@@ -1,11 +1,11 @@
 indexing-settings:
   sites:
-#    - url: https://ipfran.ru/
-#      name: ИПФ ран
-    - url: http://playback.ru/
-      name: PlayBack
-#    - url: https://www.svetlovka.ru/
-#      name: Светловка
+    - url: https://nikoartgallery.com/
+      name: Галерея Нико
+    - url: https://et-cetera.ru/mobile/
+      name: Театр "Эт Сетера"
+    - url: http://radiomv.ru
+      name: Милицейская волна
 
 search-settings:
   user-agent: "TigerSearchBot"

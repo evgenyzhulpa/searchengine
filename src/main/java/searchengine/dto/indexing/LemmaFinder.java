@@ -6,9 +6,8 @@ import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
 public class LemmaFinder {
@@ -46,11 +45,29 @@ public class LemmaFinder {
         return lemmas;
     }
 
+    public Set<String> wordsByLemmas(String text, Set<String> lemmas)
+    {
+        text = clearHtmlTags(text);
+        String[] words = text
+                .replaceAll("[^А-Яа-я]", " ")
+                .split(" ");
+        ;
+
+        return Arrays.stream(words)
+                .filter(word -> !(word.isBlank() || anyWordBaseBelongToParticle(word.toLowerCase(Locale.ROOT))))
+                .filter(word -> {
+                    String normalForm = luceneMorphology.getNormalForms(word.toLowerCase(Locale.ROOT)).get(0);
+                    return lemmas.contains(normalForm);
+                })
+                .collect(Collectors.toSet());
+    }
+
+
     private String[] arrayOfRussianWords(String text)
     {
         return text
                 .toLowerCase(Locale.ROOT)
-                .replaceAll("[^а-я\\s]", "")
+                .replaceAll("[^а-я]", " ")
                 .split(" ");
     }
 
@@ -68,7 +85,7 @@ public class LemmaFinder {
         return false;
     }
 
-    private String clearHtmlTags(String text) {
+    public String clearHtmlTags(String text) {
         String regex = "<[^>]+>|<[^/>]+/>";
         return text.replaceAll(regex, "");
     }

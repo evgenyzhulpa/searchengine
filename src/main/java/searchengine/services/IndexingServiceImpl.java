@@ -3,6 +3,7 @@ package searchengine.services;
 import lombok.RequiredArgsConstructor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -10,11 +11,12 @@ import searchengine.config.SearchBot;
 import searchengine.config.SitesList;
 import searchengine.dto.indexing.*;
 import searchengine.model.*;
-
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,8 +26,6 @@ public class IndexingServiceImpl implements IndexingService {
     private final SiteRepository siteRepository;
     @Autowired
     private final PageRepository pageRepository;
-    @Autowired
-    private final LocalPageRepository localPageRepository;
     @Autowired
     private final LemmaRepository lemmaRepository;
     @Autowired
@@ -37,6 +37,17 @@ public class IndexingServiceImpl implements IndexingService {
     private boolean stopIndexing;
     private ThreadPoolExecutor executor;
     private ForkJoinPool forkJoinPool;
+    private LemmaFinder lemmaFinder;
+    private final LocalDateTime emptyDate = LocalDateTime.of(1, 1, 1, 1, 1);
+    private static final int FREQUENCY_OCCURRENCE_MAX_PERCENT = 90;
+
+    {
+        try {
+            lemmaFinder = LemmaFinder.getInstance();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     @Override
     public IndexingResponse startIndexing() {
@@ -55,7 +66,6 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private void runSitesCrawling() {
-        clearLocalPageRepository();
         executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(sitesList.getSitesCount());
         for (Site site : sitesList.getSites()) {
             executor.execute(() -> {
@@ -78,14 +88,14 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
-    public synchronized void deleteSiteLemmasFromDB(Site site) {
+    public void deleteSiteLemmasFromDB(Site site) {
         List<Lemma> lemmaList = lemmaRepository.findBySite(site);
         if (!lemmaList.isEmpty()) {
             lemmaRepository.deleteAll(lemmaList);
         }
     }
 
-    public synchronized void deleteSiteFromDB(Site site) {
+    public void deleteSiteFromDB(Site site) {
         siteRepository.delete(site);
     }
 
@@ -96,9 +106,7 @@ public class IndexingServiceImpl implements IndexingService {
     private void runPagesCrawling(Site site) {
         try {
             forkJoinPool = new ForkJoinPool();
-            Document htmlDocument = getHtmlDocument(site.getUrl());
-            Page parentPage = getNewPage(htmlDocument, site);
-            RecursiveTask<LocalDateTime> recursiveTask = getRecursiveTask(parentPage);
+            RecursiveTask<LocalDateTime> recursiveTask = getIndexRecursiveTask("", site);
 
             updateStatusTime(site, forkJoinPool.invoke(recursiveTask));
             if (stopIndexing) {
@@ -106,10 +114,8 @@ public class IndexingServiceImpl implements IndexingService {
                 Thread.currentThread().interrupt();
                 return;
             }
-            List<Page> pageDBEntities = savePagesInDB(localPageRepository.getPagesOfSite(site));
-            //addNewPagesIndexingData(pageDBEntities, site);
-            localPageRepository.deletePagesAndLinksOfSite(site);
-            updateStatus(site, SiteStatus.INDEXED);
+            SiteStatus status = site.getLastError().isEmpty() ? SiteStatus.INDEXED : SiteStatus.FAILED;
+            updateStatus(site, status);
         } catch (Exception exception) {
             logger.error("Indexing error site " + site.getUrl() + ": " + exception.getMessage());
             Thread.currentThread().interrupt();
@@ -146,51 +152,72 @@ public class IndexingServiceImpl implements IndexingService {
         return HtmlParser.getContent(document);
     }
 
-    private RecursiveTask<LocalDateTime> getRecursiveTask(Page parentPage) {
+    private RecursiveTask<LocalDateTime> getIndexRecursiveTask(String link, Site site) {
         return new RecursiveTask() {
             @Override
             protected LocalDateTime compute() {
                 try {
-                    List<RecursiveTask> taskList = new ArrayList<>();
-
                     if (stopIndexing) {
-                        forkJoinPool.shutdown();
-                        executor.shutdown();
-                        return LocalDateTime.now();
+                        handleIndexingError(site, "Индексация остановлена пользователем");
+                        Thread.currentThread().interrupt();
+                        return emptyDate;
                     }
-                    if (isInLocalPageRepository(parentPage)) {
-                        return LocalDateTime.now();
-                    }
-                    localPageRepository.addPage(parentPage);
-                    for (Page childPage : getChildPages(parentPage)) {
-                        RecursiveTask<LocalDateTime> task = getRecursiveTask(childPage);
-                        task.fork();
-                        taskList.add(task);
-                    }
-                    for (RecursiveTask task : taskList) {
-                        updateStatusTime(parentPage.getSite(), (LocalDateTime) task.join());
+                    Optional<Page> pageOptional = checkAndSavePageToDB(link, site);
+                    if (pageOptional.isPresent()) {
+                        Page page = pageOptional.get();
+                        runRecursivePageCrawling(page);
+                        addNewPagesIndexingData(page);
                     }
                 } catch (Exception e) {
-                    logger.error("Indexing error site " + parentPage.getSite().getUrl() +
-                            ", page " + parentPage.getPath() + ": " + e.getMessage());
-                    return LocalDateTime.now();
+                    logger.error("Indexing error site " + site.getUrl() +
+                            ", page " + link + ": " + e.getMessage());
+                    if (link.isEmpty()) {
+                        handleIndexingError(site, e.getMessage());
+                    }
+                    return emptyDate;
                 }
                 return LocalDateTime.now();
             }
         };
     }
 
-    private boolean isInLocalPageRepository(Page page) {
-        return localPageRepository.isInPageList(page);
+    private void stopThreads() {
+        forkJoinPool.shutdown();
+        executor.shutdown();
     }
 
-    public synchronized void updateStatusTime(Site site, LocalDateTime time) {
+    private void runRecursivePageCrawling(Page page) throws IOException, InterruptedException {
+        Set<String> childLinks = page.getChildLinks();
+        Site site = page.getSite();
+        ArrayList<RecursiveTask> taskList = getIndexChildLinksTaskList(childLinks, site);
+
+        handleIndexTaskListResults(taskList, site);
+    }
+
+    private ArrayList<RecursiveTask> getIndexChildLinksTaskList(Set<String> childLinks, Site site) throws IOException, InterruptedException {
+        ArrayList<RecursiveTask> taskList = new ArrayList<>();
+
+        for (String uri : getChildLinks(childLinks, site)) {
+            RecursiveTask<LocalDateTime> task = getIndexRecursiveTask(uri, site);
+            task.fork();
+            taskList.add(task);
+        }
+        return taskList;
+    }
+
+    private void handleIndexTaskListResults(ArrayList<RecursiveTask> taskList, Site site) {
+        for (RecursiveTask task : taskList) {
+            LocalDateTime dateTime = (LocalDateTime) task.join();
+            updateStatusTime(site, dateTime);
+        }
+    }
+
+    public void updateStatusTime(Site site, LocalDateTime time) {
+        if (time.equals(emptyDate)) {
+            return;
+        }
         site.setStatusTime(time);
         siteRepository.save(site);
-    }
-
-    public synchronized List<Page> savePagesInDB(Collection<Page> pages) {
-        return (List<Page>) pageRepository.saveAll(pages);
     }
 
     public void updateStatus(Site site, SiteStatus status) {
@@ -204,18 +231,20 @@ public class IndexingServiceImpl implements IndexingService {
         siteRepository.save(site);
     }
 
-    public Collection<Page> getChildPages(Page parentPage) throws IOException, InterruptedException {
-        ArrayList<Page> pages = new ArrayList<>();
-        Site site = parentPage.getSite();
+    public Set<String> getChildLinks(Set<String> childLinks, Site site) {
+        Set<String> links = new HashSet<>();
         String parentUrl = site.getUrl();
+        String regexProtocol = "http://|https://";
+        parentUrl = parentUrl.replaceFirst(regexProtocol, "");
 
-        for (String url : parentPage.getChildLinks()) {
-            if(isSiteLink(url, parentUrl) && !localPageRepository.isInPageLinks(url)) {
-                pages.add(getNewPage(getHtmlDocument(url), site));
-                localPageRepository.addPageLink(url);
+        for (String url : childLinks) {
+            url = url.replaceFirst(regexProtocol, "");
+            if(isSiteLink(url, parentUrl)) {
+                links.add(url.replaceFirst(parentUrl, ""));
             }
         }
-        return pages;
+        links.removeAll(getDBPagesLinks(links, site));
+        return links;
     }
 
     private Set<String> getChildLinksOfDocument(Document document) throws IOException {
@@ -225,11 +254,20 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     private boolean isSiteLink(String url, String siteUrl) {
-        String regexString1 = siteUrl + "[^,.#&%?\s]+";
-        String regexString2 = siteUrl + "[^,#&%?\s]+\\.html";
-        String regex = regexString1 + "|" + regexString2;
+        String regexString2 = siteUrl + "[^,.#&%?\s]+";
+        String regexString3 = siteUrl + "[^,#&%?\s]+\\.html";
+        String regex = regexString2 + "|" + regexString3;
 
         return url.matches(regex);
+    }
+
+    private List<String> getDBPagesLinks(Set<String> links, Site site) {
+        List<String> linksFromDB = getPagePathsByUriListAndSite(links.stream().toList(), site);
+        return linksFromDB;
+    }
+
+    private Vector<String> getPagePathsByUriListAndSite(List<String> uriList, Site site) {
+        return pageRepository.getPagePathsByUriListAndSite(uriList, site);
     }
 
     @Override
@@ -241,14 +279,11 @@ public class IndexingServiceImpl implements IndexingService {
             return response;
         }
         logger.info("Stop indexing");
+        stopThreads();
         stopIndexing = true;
         startIndexing = false;
         response.setResult(true);
         return response;
-    }
-
-    private void clearLocalPageRepository() {
-        localPageRepository.deleteAllPagesAndLinks();
     }
 
     @Override
@@ -266,8 +301,9 @@ public class IndexingServiceImpl implements IndexingService {
         try {
             Site site = getSiteDBEntityFromSiteObject(optionalSite.get());
             findAndDeleteOldPageIndexingData(url, site);
-            Page page = getNewPageDBEntity(getHtmlDocument(url), site);
-            addNewPagesIndexingData(new ArrayList<>(Collections.singleton(page)), site);
+            Page page = getNewPage(getHtmlDocument(url), site);
+            page = getNewPageDBEntity(page);
+            addNewPagesIndexingData(page);
         } catch (Exception e) {
             logger.error("Error index page " + url + ": " + e.getMessage());
             response.setError(e.getMessage());
@@ -275,6 +311,7 @@ public class IndexingServiceImpl implements IndexingService {
             return response;
         }
         logger.info("Index page " + url + ": completed");
+        response.setResult(true);
         return response;
     }
 
@@ -292,6 +329,7 @@ public class IndexingServiceImpl implements IndexingService {
         Optional<Site> siteOptional = siteRepository.findByUrl(site.getUrl());
         if (!siteOptional.isPresent()) {
             site.setStatus(SiteStatus.INDEXED);
+            site.setLastError("");
             site.setStatusTime(LocalDateTime.now());
             return siteRepository.save(site);
         }
@@ -310,8 +348,19 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
-    private Page getNewPageDBEntity(Document document, Site site) throws IOException {
-        return pageRepository.save(getNewPage(document, site));
+    private Optional<Page> checkAndSavePageToDB(String link, Site site) throws IOException, InterruptedException {
+        String url = site.getUrl() + link;
+        Page page = getNewPage(getHtmlDocument(url), site);
+        synchronized (pageRepository) {
+            if (pageRepository.findPageByPathAndSite(page.getPath(), site).isEmpty()) {
+                return Optional.of(getNewPageDBEntity(page));
+            }
+            return Optional.empty();
+        }
+    }
+
+    private Page getNewPageDBEntity(Page page) {
+        return pageRepository.save(page);
     }
 
     private void updateDeleteOldLemmaEntities(List<Lemma> lemmaEntities) {
@@ -335,42 +384,247 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
-    private synchronized void addNewPagesIndexingData(List<Page> pages, Site site) throws IOException, RuntimeException {
-        getLemmaAndIndexNewDBEntities(pages, site);
+    private void addNewPagesIndexingData(Page page) throws IOException, RuntimeException {
+        addNewLemmasAndIndexesToDB(page);
     }
 
-    private HashMap<String, Integer> getLemmasOfPageContent(String content) throws IOException {
-        LemmaFinder finder = LemmaFinder.getInstance();
-        return finder.getLemmas(content);
+    private HashMap<String, Integer> getLemmasFromText(String content) throws IOException {
+       return lemmaFinder.getLemmas(content);
     }
 
-    private void getLemmaAndIndexNewDBEntities(List<Page> pages, Site site) throws IOException {
-        List<Lemma> lemmaEntities = lemmaRepository.findBySite(site);
+    private void addNewLemmasAndIndexesToDB(Page page) throws IOException {
+        Site site = page.getSite();
+        HashMap<String, Integer> lemmas = getLemmasFromText(page.getContent());
 
-        for (Page page : pages) {
-            HashMap<String, Integer> lemmas = getLemmasOfPageContent(page.getContent());
+        for (String lemma : lemmas.keySet()) {
+            if (stopIndexing) {
+                handleIndexingError(site, "Индексация остановлена пользователем");
+                Thread.currentThread().interrupt();
+                return;
+            }
+            Lemma lemmaEntity = getEntityLemmaFromStringLemma(site, lemma);
+            Index index = new Index();
+            index.setPage(page);
+            index.setLemma(lemmaEntity);
+            index.setRank(lemmas.get(lemma));
+            indexRepository.save(index);
+        }
+    }
 
-            for (String lemma : lemmas.keySet()) {
-                Lemma lemmaObject = new Lemma();
-                Optional<Lemma> lemmaOptional = lemmaEntities.stream()
-                        .filter(lemmaEntity -> lemmaEntity.getLemma().equals(lemma))
-                        .findAny();
+    private synchronized Lemma getEntityLemmaFromStringLemma(Site site, String lemma) {
+        Optional<Lemma> lemmaOptional = lemmaRepository.findBySiteAndLemma(site, lemma);
+        Lemma lemmaObject = new Lemma();
 
-                if (lemmaOptional.isPresent()) {
-                    lemmaObject = lemmaOptional.get();
-                } else {
-                    lemmaObject.setLemma(lemma);
-                    lemmaObject.setSite(site);
+        if (lemmaOptional.isPresent()) {
+            lemmaObject = lemmaOptional.get();
+        } else {
+            lemmaObject.setLemma(lemma);
+            lemmaObject.setSite(site);
+        }
+        lemmaObject.setFrequency(lemmaObject.getFrequency() + 1);
+        return lemmaRepository.save(lemmaObject);
+    }
+
+    @Override
+    public SearchResponse search(SearchRequest request) throws IOException {
+        SearchResponse response = new SearchResponse();
+        String errorMessage = messageAboutIncorrectSearchData(request);
+
+        if (!errorMessage.isEmpty()) {
+            response.setResult(false);
+            response.setError(errorMessage);
+            return response;
+        }
+        Set<String> lemmas = getLemmasFromText(request.getQuery()).keySet();
+        List<Lemma> lemmaEntities = getLemmaEntities(lemmas, request.getSiteUrl());
+        lemmaEntities = excludeFrequentlyEncounteredLemmas(lemmaEntities);
+        lemmas = getLemmasFromLemmaEntities(lemmaEntities);
+        if (lemmaEntities.isEmpty()) {
+            response.setResult(false);
+            response.setError("Информация в базе отсутствует");
+            return response;
+        }
+        List<Page> matchingPages = getMatchingPages(lemmaEntities);
+        response.setResult(true);
+        response.setCount(matchingPages.size());
+        if (matchingPages.size() > 0) {
+            response.setData(getSearchDataArray(matchingPages, lemmas, request));
+        }
+        return response;
+    }
+
+    private String messageAboutIncorrectSearchData(SearchRequest request) {
+        HashMap<Boolean, String> errorMap = new HashMap<>();
+        String query = request.getQuery();
+        String siteUrl = request.getSiteUrl();
+        boolean isInSitesList = sitesList.getSites().stream()
+                .anyMatch(site -> site.getUrl().equals(siteUrl));
+
+        errorMap.put(query.isEmpty(), "Задан пустой поисковый запрос");
+        errorMap.put(siteUrl.isEmpty(), "Не задана страница поиска");
+        errorMap.put(!siteUrl.equals("All") && !isInSitesList, "Указанная страница не найдена");
+
+        for (Boolean error : errorMap.keySet()) {
+            if (error) return errorMap.get(true);
+        }
+        return new String();
+    }
+
+    private List<Lemma> excludeFrequentlyEncounteredLemmas(List<Lemma> lemmasEntities) {
+        if (lemmasEntities.size() <= 1) {
+            return lemmasEntities;
+        }
+
+        List<Lemma> lemmasEntities2 = lemmasEntities.stream()
+                .filter(lemmaEntity -> {
+                    int pagesCount = lemmaEntity.getSite().getPages().size();
+                    int occurrencePercent = lemmaEntity.getFrequency()  * 100 / pagesCount;
+                    return occurrencePercent > FREQUENCY_OCCURRENCE_MAX_PERCENT;
+                })
+                .toList();
+        lemmasEntities.removeAll(lemmasEntities2);
+
+        return lemmasEntities;
+    }
+
+    private List<Lemma> getLemmaEntities(Set<String> lemmas, String siteUrl) {
+        List<Lemma> lemmaEntities;
+
+        if (siteUrl.equals("All")) {
+            lemmaEntities = lemmaRepository.findByLemmaIn(lemmas);
+        } else {
+            Site site = siteRepository.findByUrl(siteUrl).get();
+            lemmaEntities = lemmaRepository.findBySiteAndLemmaIn(site, lemmas);
+        }
+        return lemmaEntities;
+    }
+
+    private Set<String> getLemmasFromLemmaEntities(List<Lemma> lemmaEntities) {
+        return lemmaEntities.stream()
+                .map(lE -> lE.getLemma())
+                .collect(Collectors.toSet());
+    }
+
+    private List<Page> getFirstLemmaPages(Lemma firstLemma) {
+        List<Page> firstLemmaPages = new ArrayList<>();
+
+        firstLemma.getIndexes().forEach(index -> {
+            firstLemmaPages.add(index.getPage());
+        });
+        return firstLemmaPages;
+    }
+
+    private List<Page> getMatchingPages(List<Lemma> lemmaEntities) {
+        List<Page> matchingPages = new ArrayList<>();
+        Set<Site> sites = lemmaEntities.stream().map(lE -> lE.getSite()).collect(Collectors.toSet());
+
+        for (Site site : sites) {
+            List<Lemma> siteLemmas = lemmaEntities.stream().filter(lE -> lE.getSite() == site).toList();
+            List<Page> firstLemmaPages = getFirstLemmaPages(siteLemmas.get(0));
+            HashMap<Page, Integer> pagesOccurrenceInLemmas = getPagesOccurrenceInLemmas(siteLemmas, firstLemmaPages);
+
+            firstLemmaPages.stream()
+                    .filter(page -> pagesOccurrenceInLemmas.get(page) == siteLemmas.size())
+                    .forEach(page -> matchingPages.add(page));
+
+        }
+        return matchingPages;
+    }
+
+    private HashMap<Page, Integer> getPagesOccurrenceInLemmas(List<Lemma> lemmaEntities, List<Page> firstLemmaPages) {
+        HashMap<Page, Integer> pagesOccurrenceInLemmas = new HashMap<>();
+
+        for (Lemma lemmaEntity : lemmaEntities) {
+            lemmaEntity.getIndexes().stream()
+                    .filter(index -> firstLemmaPages.contains(index.getPage()))
+                    .map(index -> {
+                        Page page = index.getPage();
+                        float absoluteRelevance = page.getAbsoluteRelevance();
+                        page.setAbsoluteRelevance(absoluteRelevance + index.getRank());
+                        return page;
+                    })
+                    .forEach(page -> {
+                        if (pagesOccurrenceInLemmas.containsKey(page)) {
+                            pagesOccurrenceInLemmas.put(page, pagesOccurrenceInLemmas.get(page) + 1);
+                        } else {
+                            pagesOccurrenceInLemmas.put(page, 1);
+                        }
+                    });
+        }
+        return pagesOccurrenceInLemmas;
+    }
+
+    private float getMaxAbsoluteRelevance(List<Page> pages) {
+        return pages.stream()
+                .map(page -> page.getAbsoluteRelevance())
+                .max(Float::compare)
+                .get();
+    }
+
+    private SearchData getSearchData(Page page, Set<String> lemmas) throws IOException {
+        Site site = page.getSite();
+        Document document = Jsoup.parse(page.getContent());
+        String title = document.title();
+        String text = lemmaFinder.clearHtmlTags(page.getContent()).replaceAll("\n", "");
+        Set<String> wordsByLemmas = lemmaFinder.wordsByLemmas(text, lemmas);
+        SearchData searchData = new SearchData();
+
+        searchData.setSite(site.getUrl());
+        searchData.setSiteName(site.getName());
+        searchData.setUri(page.getPath());
+        searchData.setTitle((title.isEmpty() ? page.getPath() : title));
+        searchData.setSnippet(getSnippetText(wordsByLemmas, text));
+        searchData.setRelevance(page.getRelevance());
+        return searchData;
+    }
+
+    private String getSnippetText(Set<String> words, String text) throws IOException {
+        StringBuilder builder = new StringBuilder();
+
+        for (String word : words) {
+            String regex = "[^.\n\s]*\s" + word + "\s[^.\n\s]*\s";
+            Pattern pattern = Pattern.compile(regex);
+            Matcher matcher = pattern.matcher(text);
+            while (matcher.find()) {
+                String searchResult = matcher.group().trim();
+                if (builder.length() + searchResult.length() >= 200) {
+                    break;
                 }
-                lemmaObject.setFrequency(lemmaObject.getFrequency() + 1);
-                Lemma lemmaEntity = lemmaRepository.save(lemmaObject);
-
-                Index index = new Index();
-                index.setPage(page);
-                index.setLemma(lemmaEntity);
-                index.setRank(lemmas.get(lemmaEntity.getLemma()));
-                indexRepository.save(index);
+                if (builder.indexOf(searchResult) > -1) {
+                    continue;
+                }
+                builder.append(searchResult + "... ");
             }
         }
+        return boldWordsInText(words, builder.toString());
+    }
+
+    private String boldWordsInText(Set<String> words, String text) {
+        for (String word : words) {
+            Pattern pattern = Pattern.compile(word);
+            Matcher matcher = pattern.matcher(text);
+            while (matcher.find()) {
+                text = text.replace(word, "<b>" + word + "</b>");
+            }
+        }
+        return text;
+    }
+
+    private SearchData[] getSearchDataArray(List<Page> pages, Set<String> lemmas, SearchRequest request) throws IOException {
+        int offset = request.getOffset();
+        int limit = request.getLimit();
+        List<SearchData> dataList = new ArrayList<>();
+        float maxAbsoluteRelevance = getMaxAbsoluteRelevance(pages);
+        pages.sort(Comparator.comparing(page -> page.getPath()));
+
+        for (int i = offset; i < limit + offset && i < pages.size(); i++) {
+            Page page = pages.get(i);
+            page.setRelevance(page.getAbsoluteRelevance() / maxAbsoluteRelevance);
+            SearchData searchData = getSearchData(page, lemmas);
+            dataList.add(searchData);
+        }
+
+        dataList.sort(SearchData::compareTo);
+        return dataList.toArray(new SearchData[dataList.size()]);
     }
 }

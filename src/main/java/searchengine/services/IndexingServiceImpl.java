@@ -35,6 +35,7 @@ public class IndexingServiceImpl implements IndexingService {
     private final Logger logger = LogManager.getLogger("indexingServiceLogger");
     private boolean startIndexing;
     private boolean stopIndexing;
+    private boolean singlePageIndexing;
     private ThreadPoolExecutor executor;
     private ForkJoinPool forkJoinPool;
     private LemmaFinder lemmaFinder;
@@ -298,6 +299,7 @@ public class IndexingServiceImpl implements IndexingService {
             return response;
         }
         logger.info("Index page " + url);
+        singlePageIndexing = true;
         try {
             Site site = getSiteDBEntityFromSiteObject(optionalSite.get());
             findAndDeleteOldPageIndexingData(url, site);
@@ -311,6 +313,7 @@ public class IndexingServiceImpl implements IndexingService {
             return response;
         }
         logger.info("Index page " + url + ": completed");
+        singlePageIndexing = false;
         response.setResult(true);
         return response;
     }
@@ -397,7 +400,7 @@ public class IndexingServiceImpl implements IndexingService {
         HashMap<String, Integer> lemmas = getLemmasFromText(page.getContent());
 
         for (String lemma : lemmas.keySet()) {
-            if (stopIndexing) {
+            if (stopIndexing && !singlePageIndexing) {
                 handleIndexingError(site, "Индексация остановлена пользователем");
                 Thread.currentThread().interrupt();
                 return;

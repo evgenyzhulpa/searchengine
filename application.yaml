@@ -1,15 +1,17 @@
 indexing-settings:
   sites:
-    - url: https://nikoartgallery.com/
-      name: Галерея Нико
-    - url: https://et-cetera.ru/mobile/
-      name: Театр "Эт Сетера"
-    - url: http://radiomv.ru
-      name: Милицейская волна
+#    - url: https://www.lutherancathedral.ru
+#      name: Собор Петра и Павла
+#    - url: https://www.playback.ru
+#      name: PlayBack.ru
+    - url: https://radiomv.ru
+      name: Милицейская Волна
+    - url: https://ipfran.ru
+      name: ИПФ Ран
 
 search-settings:
   user-agent: "TigerSearchBot"
-  referrer: "http://www.google.com"
+  referrer: "https://www.google.com"
 
 server:
   port: 8080

@@ -7,7 +7,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @RequiredArgsConstructor
 public class LemmaFinder {
@@ -20,22 +21,15 @@ public class LemmaFinder {
         return new LemmaFinder(morphology);
     }
 
-    public HashMap<String, Integer> getLemmas(String text)
-    {
+    public HashMap<String, Integer> getLemmasAndTheirFrequencies(String htmlContent) {
         HashMap<String, Integer> lemmas = new HashMap<>();
-        text = clearHtmlTags(text);
-        String[] words = arrayOfRussianWords(text);
+        String[] words = arrayOfRussianWords(clearHtmlTags(htmlContent));
 
         for (String word : words) {
-            List<String> normalForms;
-            String normalForm;
-
-            word = word.replaceAll("\\s", "");
-            if (word.isBlank() || anyWordBaseBelongToParticle(word)) {
+            String normalForm = getNormalFormOfWord(word);
+            if (normalForm.isBlank()) {
                 continue;
             }
-            normalForms = luceneMorphology.getNormalForms(word);
-            normalForm = normalForms.get(0);
             if (lemmas.containsKey(normalForm)) {
                 lemmas.put(normalForm, lemmas.get(normalForm) + 1);
             } else {
@@ -45,30 +39,59 @@ public class LemmaFinder {
         return lemmas;
     }
 
-    public Set<String> wordsByLemmas(String text, Set<String> lemmas)
-    {
-        text = clearHtmlTags(text);
-        String[] words = text
-                .replaceAll("[^А-Яа-я]", " ")
-                .split(" ");
-        ;
+    public Set<String> getLemmasFromWords(String text) {
+        Set<String> lemmas = new HashSet<>();
+        String[] words = arrayOfRussianWords(text);
 
-        return Arrays.stream(words)
-                .filter(word -> !(word.isBlank() || anyWordBaseBelongToParticle(word.toLowerCase(Locale.ROOT))))
-                .filter(word -> {
-                    String normalForm = luceneMorphology.getNormalForms(word.toLowerCase(Locale.ROOT)).get(0);
-                    return lemmas.contains(normalForm);
-                })
-                .collect(Collectors.toSet());
+        for (String word : words) {
+            String normalForm = getNormalFormOfWord(word);
+            if (normalForm.isBlank()) {
+                continue;
+            }
+            lemmas.add(normalForm);
+        }
+        return lemmas;
     }
 
+    public Set<String> getWordsByLemmas(Set<String> lemmas, String text) {
+        Set<String> words = new HashSet<>();
+        String[] allWords = getWordsArrayFromText(clearHtmlTags(text));
 
-    private String[] arrayOfRussianWords(String text)
-    {
-        return text
-                .toLowerCase(Locale.ROOT)
-                .replaceAll("[^а-я]", " ")
-                .split(" ");
+        for (String word : allWords) {
+            String normalForm = getNormalFormOfWord(word);
+            if (!normalForm.isBlank() && lemmas.contains(normalForm)) {
+                words.add(word);
+            }
+        }
+        return words;
+    }
+
+    private String[] getWordsArrayFromText(String text) {
+        String[] words = arrayOfRussianWords(text);
+        return words;
+    }
+
+    public String getNormalFormOfWord(String word) {
+        word = word.replaceAll("\\s", "");
+        if (word.isBlank() || anyWordBaseBelongToParticle(word)) {
+            return "";
+        }
+        List<String> normalForms = luceneMorphology.getNormalForms(word);
+        return normalForms.get(0);
+    }
+
+    private String[] arrayOfRussianWords(String text) {
+        Set<String> russianWords = new HashSet<>();
+        Pattern pattern = Pattern.compile("[а-я]+");
+        Matcher matcher = pattern.matcher(text.toLowerCase(Locale.ROOT));
+        while (matcher.find()) {
+            russianWords.add(matcher.group());
+        }
+        if (russianWords.isEmpty()) {
+            return new String[0];
+        }
+
+        return russianWords.toArray(new String[russianWords.size()]);
     }
 
     private boolean anyWordBaseBelongToParticle(String word) {

@@ -9,10 +9,5 @@ import java.util.Optional;
 
 @Repository
 public interface SiteRepository extends CrudRepository<Site, Integer> {
-
-    @Query("from Site s where s.url = ?1")
     Optional<Site> findByUrl(String url);
-
-    @Query("from Site")
-    List<Site> getSites();
 }

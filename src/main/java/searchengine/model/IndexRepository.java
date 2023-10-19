@@ -8,9 +8,6 @@ import java.util.List;
 
 @Repository
 public interface IndexRepository extends CrudRepository<Index, Integer> {
-    @Query("from Index i where i.page = ?1")
-    List<Index> findIndexesByPageId(Page page);
-
     @Query("select i.lemma from Index i where i.page = ?1")
     List<Lemma> findLemmasByPageId(Page page);
 

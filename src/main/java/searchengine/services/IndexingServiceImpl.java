@@ -251,16 +251,20 @@ public class IndexingServiceImpl implements IndexingService {
             Thread.currentThread().interrupt();
             return;
         }
-        pages.stream().filter(p -> pathsOfPagesFromDB.contains(p.getPath())).map(p -> pages.remove(p));
-        List<Page> pageEntities = (List<Page>) pageRepository.saveAll(pages);
-        addNewPagesIndexingData(pageEntities, site);
+        List<Page> pagesForDelete = pages.stream().filter(p -> pathsOfPagesFromDB.contains(p.getPath())).toList();
+        pages.removeAll(pagesForDelete);
+        if (pages.size() > 0) {
+            pages = (List<Page>) pageRepository.saveAll(pages);
+            addNewPagesIndexingData(pages, site);
+        }
     }
 
-    private synchronized void addNewPagesIndexingData(List<Page> pages, Site site) throws RuntimeException {
+    private void addNewPagesIndexingData(List<Page> pages, Site site) throws RuntimeException {
         List<Lemma> lemmaEntities = lemmaRepository.findBySite(site);
         List<Index> indexEntities = new ArrayList<>();
         for (Page page : pages) {
-            HashMap<String, Integer> lemmasRanks = getLemmasAndTheirFrequenciesFromText(page.getContent());
+            String text = getTextFromHTMLContent(page.getContent());
+            HashMap<String, Integer> lemmasRanks = getLemmasAndTheirFrequenciesFromText(text);
             for (String lemma : lemmasRanks.keySet()) {
                 if (!performingIndexing && !singlePageIndexing) {
                     Thread.currentThread().interrupt();
@@ -275,15 +279,12 @@ public class IndexingServiceImpl implements IndexingService {
             }
         }
         lemmaRepository.saveAll(lemmaEntities);
-        List<Index> indexes = indexEntities.stream().filter(index -> index.getLemma().getLemma().equals("телефон")).toList();
-        for (Index index : indexes) {
-            logger.info("index with page - " + index.getPage().getPath() + " and with lemma " + index.getLemma().getLemma() + " and rank " + index.getRank());
-        }
-        indexes = (List<Index>) indexRepository.saveAll(indexEntities);
-        indexes = indexes.stream().filter(index -> index.getLemma().getLemma().equals("телефон")).toList();
-        for (Index index : indexes) {
-            logger.info("index with id " + index.getId() + "page " + index.getPage().getPath() + " and with lemma " + index.getLemma().getLemma() + " and rank " + index.getRank());
-        }
+        indexRepository.saveAll(indexEntities);
+    }
+
+    public static String getTextFromHTMLContent(String htmlContent) {
+        return HtmlParser.getTextFromHTMLContent(htmlContent);
+
     }
 
     private HashMap<String, Integer> getLemmasAndTheirFrequenciesFromText(String content) {
@@ -570,14 +571,14 @@ public class IndexingServiceImpl implements IndexingService {
 
     private SearchData getSearchData(Page page, Set<String> lemmas) throws IOException {
         Site site = page.getSite();
-        String pageContent = page.getContent();
-        String title = HtmlParser.getTitleFromHTMLContent(pageContent);
+        String text = getTextFromHTMLContent(page.getContent());
+        String title = HtmlParser.getTitleFromHTMLContent(page.getContent());
         SearchData searchData = new SearchData();
         searchData.setSite(site.getUrl());
         searchData.setSiteName(site.getName());
         searchData.setUri(page.getPath());
         searchData.setTitle((title.isEmpty() ? page.getPath() : title));
-        searchData.setSnippet(getSnippetText(lemmas, pageContent));
+        searchData.setSnippet(getSnippetText(lemmas, text));
         searchData.setRelevance(page.getRelevance());
         return searchData;
     }

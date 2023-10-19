@@ -23,7 +23,7 @@ public class LemmaFinder {
 
     public HashMap<String, Integer> getLemmasAndTheirFrequencies(String htmlContent) {
         HashMap<String, Integer> lemmas = new HashMap<>();
-        String[] words = arrayOfRussianWords(clearHtmlTags(htmlContent));
+        String[] words = arrayOfRussianWords(htmlContent);
 
         for (String word : words) {
             String normalForm = getNormalFormOfWord(word);
@@ -55,7 +55,7 @@ public class LemmaFinder {
 
     public Set<String> getWordsByLemmas(Set<String> lemmas, String text) {
         Set<String> words = new HashSet<>();
-        String[] allWords = getWordsArrayFromText(clearHtmlTags(text));
+        String[] allWords = getWordsArrayFromText(text);
 
         for (String word : allWords) {
             String normalForm = getNormalFormOfWord(word);
@@ -106,10 +106,5 @@ public class LemmaFinder {
             }
         }
         return false;
-    }
-
-    public String clearHtmlTags(String text) {
-        String regex = "<[^>]+>|<[^/>]+/>";
-        return text.replaceAll(regex, "");
     }
 }

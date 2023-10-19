@@ -1,9 +1,9 @@
 indexing-settings:
   sites:
-#    - url: https://www.lutherancathedral.ru
-#      name: Собор Петра и Павла
-#    - url: https://www.playback.ru
-#      name: PlayBack.ru
+    - url: https://www.lutherancathedral.ru
+      name: Собор Петра и Павла
+    - url: https://www.playback.ru
+      name: PlayBack.ru
     - url: https://radiomv.ru
       name: Милицейская Волна
     - url: https://ipfran.ru

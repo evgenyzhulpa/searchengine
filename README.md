@@ -20,7 +20,7 @@
 - 3. выполнение индексации страниц сайтов:
 ![выполнение индексации страниц сайтов](https://github.com/evgenyzhulpa/searchengine/assets/120999337/5fa8e7ce-33fa-40bd-90ff-63e6817045f6)
 - 4. выполнение индексации страниц сайтов с принудительной остановкой:
-![выполнение индексации страниц сайтов](https://github.com/evgenyzhulpa/searchengine/assets/120999337/6d4161bf-ea9b-45e0-9db3-8be2230f283f)
+![выполнение индексации страниц сайтов с принудительной остановкой](https://github.com/evgenyzhulpa/searchengine/assets/120999337/65841622-a1b2-4f76-a193-35607d2f3c4c)
 - 5. индексация отдельной страницы сайта:
 ![индексация отдельной страницы](https://github.com/evgenyzhulpa/searchengine/assets/120999337/fe24f22a-f12d-4658-b04f-ab1be42604af)
 - 6. выполнение поиска по сайтам:

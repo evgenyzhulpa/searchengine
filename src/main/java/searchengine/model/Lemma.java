@@ -22,5 +22,4 @@ public class Lemma {
     private int frequency;
     @OneToMany(mappedBy = "lemma", cascade = CascadeType.ALL)
     private Set<Index> indexes;
-
 }

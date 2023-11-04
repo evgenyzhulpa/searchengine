@@ -9,7 +9,6 @@ import lombok.Setter;
 @Getter
 @Setter
 public class Index {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
@@ -21,5 +20,4 @@ public class Index {
     private Lemma lemma;
     @Column(name = "lemma_rank", nullable = false)
     float rank;
-
 }

@@ -24,14 +24,13 @@ public class HtmlParser {
 
     public static String getTextFromHTMLContent(String htmlContent) {
         Document document = getDocumentByHTMLContent(htmlContent);
-        return document.wholeText();
+        return document.body().text();
     }
 
     public static String getTitleFromHTMLContent(String htmlContent) {
         Document document = getDocumentByHTMLContent(htmlContent);
         return document.title();
     }
-
 
     private static Response getResponseConnection(Document document) {
         return document.connection().response();
@@ -49,7 +48,5 @@ public class HtmlParser {
     public static Elements getHrefElements(Document document) {
         return document.getElementsByAttribute("href");
     }
-
-
 
 }

@@ -11,8 +11,7 @@ import java.util.Set;
 @Table(name = "site")
 @Getter
 @Setter
-public class Site
-{
+public class Site {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
@@ -31,5 +30,4 @@ public class Site
     private Set<Page> pages;
     @OneToMany(mappedBy = "site", cascade = CascadeType.ALL)
     private Set<Lemma> lemmas;
-
 }

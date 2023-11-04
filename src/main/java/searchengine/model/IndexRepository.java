@@ -10,5 +10,4 @@ import java.util.List;
 public interface IndexRepository extends CrudRepository<Index, Integer> {
     @Query("select i.lemma from Index i where i.page = ?1")
     List<Lemma> findLemmasByPageId(Page page);
-
 }

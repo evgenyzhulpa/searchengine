@@ -21,7 +21,6 @@ public class SitesList {
 
     private void formatUrl(List<Site> sites) {
         String regex = "www\\.";
-
         for (Site site : sites) {
             String url = site.getUrl();
             if (url.contains(regex)) {
@@ -34,5 +33,4 @@ public class SitesList {
     public int getSitesCount() {
         return sites.size();
     }
-
 }

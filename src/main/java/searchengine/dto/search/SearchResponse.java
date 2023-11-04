@@ -1,4 +1,4 @@
-package searchengine.dto.indexing;
+package searchengine.dto.search;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;

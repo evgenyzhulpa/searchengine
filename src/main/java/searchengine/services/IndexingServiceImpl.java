@@ -16,9 +16,6 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -39,9 +36,7 @@ public class IndexingServiceImpl implements IndexingService {
     private ThreadPoolExecutor executor;
     private ForkJoinPool forkJoinPool;
     private LemmaFinder lemmaFinder;
-    private static final int FREQUENCY_OCCURRENCE_MAX_PERCENT = 90;
     private static final int MAX_PAGE_LIST_SIZE = 1000;
-    private static final int MAX_SEARCH_RESULT_LENGTH = 200;
 
     {
         try {
@@ -284,7 +279,6 @@ public class IndexingServiceImpl implements IndexingService {
 
     public static String getTextFromHTMLContent(String htmlContent) {
         return HtmlParser.getTextFromHTMLContent(htmlContent);
-
     }
 
     private HashMap<String, Integer> getLemmasAndTheirFrequenciesFromText(String content) {
@@ -444,239 +438,5 @@ public class IndexingServiceImpl implements IndexingService {
 
     private Page getNewPageDBEntity(Page page) {
         return pageRepository.save(page);
-    }
-
-    @Override
-    public SearchResponse search(SearchRequest request) throws IOException {
-        SearchResponse response = getSearchResponseBySearchRequestCorrectness(request);
-        if (!response.isResult()) {
-            return response;
-        }
-        Set<String> lemmas = getLemmasFromWords(request.getQuery());
-        List<Site> sites = getSitesForSearch(request.getSiteUrl());
-        List<Lemma> lemmasEntities = getLemmasEntities(lemmas, sites);
-        if (lemmasEntities.isEmpty()) {
-            response.setCount(0);
-            response.setData(getSearchDataArray(new ArrayList<>(), lemmas, request));
-            return response;
-        }
-        lemmas = getLemmasFromLemmaEntities(lemmasEntities);
-        List<Page> matchingPages = getMatchingPages(lemmasEntities, lemmas.size(), sites);
-        response.setCount(matchingPages.size());
-        response.setData(getSearchDataArray(matchingPages, lemmas, request));
-        return response;
-    }
-
-    private SearchResponse getSearchResponseBySearchRequestCorrectness(SearchRequest request) {
-        SearchResponse response = new SearchResponse();
-        String errorMessage = messageAboutIncorrectSearchData(request);
-        if (!errorMessage.isEmpty()) {
-            response.setResult(false);
-            response.setError(errorMessage);
-            return response;
-        }
-        response.setResult(true);
-        return response;
-    }
-
-    private String messageAboutIncorrectSearchData(SearchRequest request) {
-        HashMap<Boolean, String> errorMap = new HashMap<>();
-        String query = request.getQuery();
-        String siteUrl = request.getSiteUrl();
-        boolean isInSitesList = sitesList.getSites().stream()
-                .anyMatch(site -> site.getUrl().equals(siteUrl));
-        errorMap.put(query.isEmpty(), "Задан пустой поисковый запрос");
-        errorMap.put(siteUrl.isEmpty(), "Не задана страница поиска");
-        errorMap.put(!siteUrl.equals("All") && !isInSitesList, "Указанная страница не найдена");
-        for (Boolean error : errorMap.keySet()) {
-            if (error) {
-                return errorMap.get(true);
-            }
-        }
-        return new String();
-    }
-
-    private Set<String> getLemmasFromWords(String text) {
-        return lemmaFinder.getLemmasFromWords(text);
-    }
-
-    private List<Site> getSitesForSearch(String siteUrl) {
-        List<Site> sites = new ArrayList<>();
-        if (siteUrl.equals("All")) {
-            sites = (ArrayList<Site>) siteRepository.findAll();
-        } else {
-            Optional<Site> optionalSite = siteRepository.findByUrl(siteUrl);
-            if (optionalSite.isPresent()) {
-                sites.add(optionalSite.get());
-            }
-        }
-        return sites;
-    }
-
-    private List<Lemma> getLemmasEntities(Set<String> lemmas, List<Site> sites) {
-        List<Lemma> lemmasEntities = getLemmasEntitiesBySiteInAndLemmaIn(lemmas, sites);
-        if (lemmasEntities.isEmpty() || lemmas.size() > lemmasEntities.size()) {
-            return new ArrayList<>();
-        }
-        lemmasEntities = excludeFrequentlyEncounteredLemmas(lemmas, lemmasEntities);
-        lemmasEntities = sortLemmasEntitiesByFrequency(lemmasEntities);
-        return lemmasEntities;
-    }
-
-    private List<Lemma> excludeFrequentlyEncounteredLemmas(Set<String> lemmas, List<Lemma> lemmasEntities) {
-        if (lemmas.size() <= 1) {
-            return lemmasEntities;
-        }
-        int allPagesCount = (int) pageRepository.count();
-        List<Lemma> lemmasEntitiesForDelete = lemmasEntities.stream()
-                .filter(lemmaEntity -> {
-                    int occurrencePercent = lemmaEntity.getFrequency()  * 100 / allPagesCount;
-                    return occurrencePercent > FREQUENCY_OCCURRENCE_MAX_PERCENT;
-                })
-                .toList();
-        lemmasEntities.removeAll(lemmasEntitiesForDelete);
-        return lemmasEntities;
-    }
-
-    private List<Lemma> sortLemmasEntitiesByFrequency(List<Lemma> lemmasEntities) {
-        lemmasEntities.sort(Comparator.comparing(l -> l.getFrequency()));
-        return lemmasEntities;
-    }
-
-    private SearchData[] getSearchDataArray(List<Page> pages, Set<String> lemmas, SearchRequest request) throws IOException {
-        int offset = request.getOffset();
-        int limit = request.getLimit();
-        List<SearchData> dataList = new ArrayList<>();
-        if (pages.isEmpty()) {
-            return dataList.toArray(new SearchData[dataList.size()]);
-        }
-        float maxAbsoluteRelevance = getMaxAbsoluteRelevance(pages);
-        pages.sort(Comparator.comparing(page -> page.getPath()));
-        for (int i = offset; i < limit + offset && i < pages.size(); i++) {
-            Page page = pages.get(i);
-            page.setRelevance(page.getAbsoluteRelevance() / maxAbsoluteRelevance);
-            SearchData searchData = getSearchData(page, lemmas);
-            dataList.add(searchData);
-        }
-        dataList.sort(SearchData::compareTo);
-        return dataList.toArray(new SearchData[dataList.size()]);
-    }
-
-    private float getMaxAbsoluteRelevance(List<Page> pages) {
-        return pages.stream()
-                .map(page -> page.getAbsoluteRelevance())
-                .max(Float::compare)
-                .get();
-    }
-
-    private SearchData getSearchData(Page page, Set<String> lemmas) throws IOException {
-        Site site = page.getSite();
-        String text = getTextFromHTMLContent(page.getContent());
-        String title = HtmlParser.getTitleFromHTMLContent(page.getContent());
-        SearchData searchData = new SearchData();
-        searchData.setSite(site.getUrl());
-        searchData.setSiteName(site.getName());
-        searchData.setUri(page.getPath());
-        searchData.setTitle((title.isEmpty() ? page.getPath() : title));
-        searchData.setSnippet(getSnippetText(lemmas, text));
-        searchData.setRelevance(page.getRelevance());
-        return searchData;
-    }
-
-    private String getSnippetText(Set<String> lemmas, String text) {
-        StringBuilder builder = new StringBuilder();
-        Set<String> words = lemmaFinder.getWordsByLemmas(lemmas, text);
-        for (String word : words) {
-            String firstLetterOfWord = word.substring(0, 1);
-            String wordWithCapitalLetter = word.replaceFirst(firstLetterOfWord, firstLetterOfWord.toUpperCase(Locale.ROOT));
-            String exprOfWord = "(" + wordWithCapitalLetter + "|" + word + ")";
-            String regex = "(([-а-яА-Яё0-9()+]*[^А-Яа-я0-9!?.]){1,2}|[^А-Яа-я0-9!?,.])" + exprOfWord + "(([^А-Яа-я0-9!?.][-а-яА-Яё0-9()+]*){1,2}|[^А-Яа-я0-9])";
-            Pattern pattern = Pattern.compile(regex);
-            Matcher matcher = pattern.matcher(text);
-            while (matcher.find()) {
-                String searchResult = matcher.group().replaceAll("\n|\s\s", "");
-                if (builder.indexOf(searchResult) > -1) {
-                    continue;
-                }
-                if (builder.length() + searchResult.length() >= MAX_SEARCH_RESULT_LENGTH) {
-                    break;
-                }
-                builder.append(searchResult + "... ");
-            }
-        }
-        return boldWordsInText(words, builder.toString());
-    }
-
-    private String boldWordsInText(Set<String> words, String text) {
-        for (String word : words) {
-            String firstLetterOfWord = word.substring(0, 1);
-            String wordWithCapitalLetter = word.replaceFirst(firstLetterOfWord, firstLetterOfWord.toUpperCase(Locale.ROOT));
-            String exprOfWord = wordWithCapitalLetter + "|" + word;
-            Pattern pattern = Pattern.compile(exprOfWord);
-            Matcher matcher = pattern.matcher(text);
-            while (matcher.find()) {
-                text = text.replace(matcher.group(), "<b>" + matcher.group() + "</b>");
-            }
-        }
-        return text;
-    }
-
-    private Set<String> getLemmasFromLemmaEntities(List<Lemma> lemmaEntities) {
-        return lemmaEntities.stream()
-                .map(lE -> lE.getLemma())
-                .collect(Collectors.toSet());
-    }
-
-    private List<Page> getMatchingPages(List<Lemma> lemmaEntities, int lemmasSize, List<Site> sites) {
-        List<Page> matchingPages = new ArrayList<>();
-        for (Site site : sites) {
-            List<Lemma> siteLemmasEntities = lemmaEntities.stream().filter(l -> l.getSite().equals(site)).toList();
-            if (siteLemmasEntities.isEmpty() || lemmasSize > siteLemmasEntities.size()) {
-                continue;
-            }
-            List<Page> firstLemmaPages = getFirstLemmaPages(siteLemmasEntities.get(0));
-            HashMap<Page, Integer> pagesOccurrenceInLemmas = getPagesOccurrenceInLemmas(siteLemmasEntities, firstLemmaPages);
-
-            firstLemmaPages.stream()
-                    .filter(page -> pagesOccurrenceInLemmas.get(page) == siteLemmasEntities.size())
-                    .forEach(page -> matchingPages.add(page));
-
-        }
-        return matchingPages;
-    }
-
-    private List<Page> getFirstLemmaPages(Lemma firstLemma) {
-        List<Page> firstLemmaPages = new ArrayList<>();
-        firstLemma.getIndexes().forEach(index -> {
-            firstLemmaPages.add(index.getPage());
-        });
-        return firstLemmaPages;
-    }
-
-    private HashMap<Page, Integer> getPagesOccurrenceInLemmas(List<Lemma> lemmaEntities, List<Page> firstLemmaPages) {
-        HashMap<Page, Integer> pagesOccurrenceInLemmas = new HashMap<>();
-        for (Lemma lemmaEntity : lemmaEntities) {
-            lemmaEntity.getIndexes().stream()
-                    .filter(index -> firstLemmaPages.contains(index.getPage()))
-                    .map(index -> {
-                        Page page = index.getPage();
-                        float absoluteRelevance = page.getAbsoluteRelevance();
-                        page.setAbsoluteRelevance(absoluteRelevance + index.getRank());
-                        return page;
-                    })
-                    .forEach(page -> {
-                        if (pagesOccurrenceInLemmas.containsKey(page)) {
-                            pagesOccurrenceInLemmas.put(page, pagesOccurrenceInLemmas.get(page) + 1);
-                        } else {
-                            pagesOccurrenceInLemmas.put(page, 1);
-                        }
-                    });
-        }
-        return pagesOccurrenceInLemmas;
-    }
-
-    private List<Lemma> getLemmasEntitiesBySiteInAndLemmaIn(Set<String> lemmas, List<Site> sites) {
-        List<Lemma> lemmasEntities = lemmaRepository.findBySiteInAndLemmaIn(sites, lemmas);
-        return lemmasEntities;
     }
 }

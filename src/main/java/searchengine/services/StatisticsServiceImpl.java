@@ -35,7 +35,6 @@ public class StatisticsServiceImpl implements StatisticsService {
     private StatisticsData getStatisticsData() {
         StatisticsData data = new StatisticsData();
         List<Site> sites = (List<Site>) siteRepository.findAll();
-
         data.setTotal(getTotalStatistics(sites));
         data.setDetailed(getDetailedStatistics(sites));
         return data;
@@ -43,7 +42,6 @@ public class StatisticsServiceImpl implements StatisticsService {
 
     private TotalStatistics getTotalStatistics(List<Site> sites) {
         TotalStatistics total = new TotalStatistics();
-
         total.setSites(sites.size());
         total.setIndexing(true);
         total.setPages((int) pageRepository.count());
@@ -53,12 +51,10 @@ public class StatisticsServiceImpl implements StatisticsService {
 
     private List<DetailedStatisticsItem> getDetailedStatistics(List<Site> sites) {
         List<DetailedStatisticsItem> detailed = new ArrayList<>();
-
         for(Site site : sites) {
             DetailedStatisticsItem item = new DetailedStatisticsItem();
             Timestamp timestamp = Timestamp.valueOf(site.getStatusTime());
             long millis = timestamp.getTime();
-
             item.setName(site.getName());
             item.setUrl(site.getUrl());
             item.setPages(pageRepository.countBySite(site));

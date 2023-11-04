@@ -7,7 +7,7 @@ indexing-settings:
     - url: https://radiomv.ru
       name: Милицейская Волна
     - url: https://ipfran.ru
-      name: ИПФ Ран
+      name: ИПФ РАН
 
 search-settings:
   user-agent: "TigerSearchBot"

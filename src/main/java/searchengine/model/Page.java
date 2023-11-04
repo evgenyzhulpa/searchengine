@@ -9,8 +9,7 @@ import java.util.Set;
 @Table(name = "page")
 @Getter
 @Setter
-public class Page
-{
+public class Page {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
@@ -30,5 +29,4 @@ public class Page
     private float absoluteRelevance;
     @Transient
     private float relevance;
-
 }

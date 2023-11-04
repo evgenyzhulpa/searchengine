@@ -24,7 +24,6 @@ public class LemmaFinder {
     public HashMap<String, Integer> getLemmasAndTheirFrequencies(String htmlContent) {
         HashMap<String, Integer> lemmas = new HashMap<>();
         String[] words = arrayOfRussianWords(htmlContent);
-
         for (String word : words) {
             String normalForm = getNormalFormOfWord(word);
             if (normalForm.isBlank()) {
@@ -53,26 +52,23 @@ public class LemmaFinder {
         return lemmas;
     }
 
-    public Set<String> getWordsByLemmas(Set<String> lemmas, String text) {
-        Set<String> words = new HashSet<>();
-        String[] allWords = getWordsArrayFromText(text);
-
-        for (String word : allWords) {
-            String normalForm = getNormalFormOfWord(word);
-            if (!normalForm.isBlank() && lemmas.contains(normalForm)) {
-                words.add(word);
+    public List<String> getLemmasListFromWordsList(List<String> words) {
+        List<String> lemmas = new ArrayList<>();
+        for (String word : words) {
+            Pattern pattern = Pattern.compile("[А-Яа-я]+");
+            Matcher matcher = pattern.matcher(word);
+            String wordLemma = "";
+            if (matcher.find()) {
+                wordLemma = getNormalFormOfWord(matcher.group());
             }
+            lemmas.add(wordLemma);
         }
-        return words;
-    }
-
-    private String[] getWordsArrayFromText(String text) {
-        String[] words = arrayOfRussianWords(text);
-        return words;
+        return lemmas;
     }
 
     public String getNormalFormOfWord(String word) {
         word = word.replaceAll("\\s", "");
+        word = word.toLowerCase(Locale.ROOT);
         if (word.isBlank() || anyWordBaseBelongToParticle(word)) {
             return "";
         }
@@ -82,8 +78,8 @@ public class LemmaFinder {
 
     private String[] arrayOfRussianWords(String text) {
         Set<String> russianWords = new HashSet<>();
-        Pattern pattern = Pattern.compile("[а-я]+");
-        Matcher matcher = pattern.matcher(text.toLowerCase(Locale.ROOT));
+        Pattern pattern = Pattern.compile("[А-Яа-я]+");
+        Matcher matcher = pattern.matcher(text);
         while (matcher.find()) {
             russianWords.add(matcher.group());
         }
@@ -107,4 +103,5 @@ public class LemmaFinder {
         }
         return false;
     }
+
 }

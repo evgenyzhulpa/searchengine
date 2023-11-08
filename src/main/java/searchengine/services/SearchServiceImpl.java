@@ -27,7 +27,7 @@ public class SearchServiceImpl implements SearchService {
     private LemmaFinder lemmaFinder;
     private static final int FREQUENCY_OCCURRENCE_MAX_PERCENT = 90;
     private static final int MAX_SEARCH_RESULT_LENGTH = 200;
-    private static final int ADDITIONAL_WORDS_COUNT_TO_RIGHT_AND_LEFT_OF_SEARCH_WORD = 2;
+    private int maxLengthOfSnippetPhrase = 0;
 
     {
         try {
@@ -185,8 +185,16 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private String getSnippetText(Set<String> lemmas, String text) {
+        setMaxLengthOfSnippetPhrase(lemmas.size());
         HashMap<String, Integer> phrasesRelevanceMap = getPhrasesRelevanceMap(lemmas, text);
         return getSnippetTextBuilder(phrasesRelevanceMap).toString();
+    }
+
+    private void setMaxLengthOfSnippetPhrase(int lemmasSize) {
+        if (lemmasSize == 0) {
+            return;
+        }
+        maxLengthOfSnippetPhrase = MAX_SEARCH_RESULT_LENGTH / lemmasSize;
     }
 
     private HashMap<String, Integer> getPhrasesRelevanceMap(Set<String> lemmas, String text) {
@@ -195,17 +203,19 @@ public class SearchServiceImpl implements SearchService {
         List<Integer> indexesOfWords = new ArrayList<>();
         HashMap<String, Integer> phrasesRelevanceMap = new HashMap<>();
         for (String lemma : lemmas) {
-            Set<Integer> indexesOfWordsByLemma = getIndexesOfWordsFromTextByLemma(lemma,  lemmasOfWordsFromText);
-            for (Integer indexOfWord : indexesOfWordsByLemma) {
-                if (indexesOfWords.contains(indexOfWord)) {
+            HashMap<String, Integer> currentLemmaPhraseRelevanceMap = new HashMap<>();
+            for (Integer indexOfWord : getIndexesOfWordsFromTextByLemma(lemma,  lemmasOfWordsFromText)) {
+                String allSearchResultPhrases = phrasesRelevanceMap.keySet().toString();
+                if (indexesOfWords.contains(indexOfWord) && allSearchResultPhrases.contains(wordsFromText.get(indexOfWord))) {
                     continue;
                 }
                 List<Integer> indexesOfSnippetWords = getIndexesOfSnippetWordsByCurrentSearchWord(indexOfWord.intValue(), wordsFromText);
                 SnippetData snippetData = getSnippetData(wordsFromText, lemmasOfWordsFromText, indexesOfSnippetWords);
                 HashMap<String, Integer> snippetAndHisRelevance = getSnippetAndHisRelevance(snippetData, lemmas);
-                phrasesRelevanceMap.putAll(snippetAndHisRelevance);
+                currentLemmaPhraseRelevanceMap.putAll(snippetAndHisRelevance);
                 indexesOfWords.addAll(indexesOfSnippetWords);
             }
+            phrasesRelevanceMap = putTheMostRelevantSnippetPhraseToPhrasesRelevanceMap(currentLemmaPhraseRelevanceMap, phrasesRelevanceMap);
         }
         return phrasesRelevanceMap;
     }
@@ -223,15 +233,18 @@ public class SearchServiceImpl implements SearchService {
 
     private List<Integer> getIndexesOfSnippetWordsByCurrentSearchWord(int searchWordIndex, List<String> wordsFromText) {
         List<Integer> indexesOfSnippetWords = new ArrayList<>();
+        int lengthOfSnippetPhrase = wordsFromText.get(searchWordIndex).length();
         indexesOfSnippetWords.add(searchWordIndex);
-        for (int i = 1; i <= ADDITIONAL_WORDS_COUNT_TO_RIGHT_AND_LEFT_OF_SEARCH_WORD; i++) {
+        for (int i = 1; lengthOfSnippetPhrase <= maxLengthOfSnippetPhrase; i++) {
             int indexOfPreviousWord = searchWordIndex - i;
             if (indexOfPreviousWord >= 0) {
                 indexesOfSnippetWords.add(indexOfPreviousWord);
+                lengthOfSnippetPhrase += wordsFromText.get(indexOfPreviousWord).length();
             }
             int indexOfNextWord = searchWordIndex + i;
             if (indexOfNextWord < wordsFromText.size()) {
                 indexesOfSnippetWords.add(indexOfNextWord);
+                lengthOfSnippetPhrase += wordsFromText.get(indexOfNextWord).length();
             }
         }
         indexesOfSnippetWords.sort(Comparator.comparing(index -> index));
@@ -264,6 +277,15 @@ public class SearchServiceImpl implements SearchService {
         builder.append("...");
         relevanceMap.put(builder.toString(), phraseRelevance);
         return relevanceMap;
+    }
+
+    private HashMap<String, Integer> putTheMostRelevantSnippetPhraseToPhrasesRelevanceMap(HashMap<String, Integer> currentLemmaPhraseRelevanceMap,
+                                                                                          HashMap<String, Integer> phrasesRelevanceMap) {
+        for (String snippetPhrase : getSnippetPhrases(currentLemmaPhraseRelevanceMap)) {
+            phrasesRelevanceMap.put(snippetPhrase, currentLemmaPhraseRelevanceMap.get(snippetPhrase));
+            break;
+        }
+        return phrasesRelevanceMap;
     }
 
     private String boldWord(String word) {

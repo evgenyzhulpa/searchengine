@@ -1,4 +1,4 @@
-package searchengine.dto.indexing;
+package searchengine.parsers;
 
 import lombok.RequiredArgsConstructor;
 import org.apache.lucene.morphology.LuceneMorphology;

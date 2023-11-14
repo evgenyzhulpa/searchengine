@@ -8,10 +8,17 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import searchengine.config.SearchBot;
+import searchengine.config.SearchConfiguration;
 import searchengine.config.SitesList;
 import searchengine.dto.indexing.*;
 import searchengine.model.*;
+import searchengine.parsers.HtmlParser;
+import searchengine.parsers.LemmaFinder;
+import searchengine.repository.IndexRepository;
+import searchengine.repository.LemmaRepository;
+import searchengine.repository.PageRepository;
+import searchengine.repository.SiteRepository;
+
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -29,7 +36,7 @@ public class IndexingServiceImpl implements IndexingService {
     @Autowired
     private final IndexRepository indexRepository;
     private final SitesList sitesList;
-    private final SearchBot bot;
+    private final SearchConfiguration configuration;
     private final Logger logger = LogManager.getLogger("indexingServiceLogger");
     private boolean performingIndexing;
     private boolean singlePageIndexing;
@@ -122,7 +129,6 @@ public class IndexingServiceImpl implements IndexingService {
         forkJoinPool = new ForkJoinPool();
         Set<String> links = new HashSet<>();
         String link = site.getUrl() + "/";
-
         links.add(link);
         RecursiveTask<List<Page>> recursiveTask = getIndexRecursiveTask(links, link, site);
         return forkJoinPool.invoke(recursiveTask);
@@ -175,7 +181,7 @@ public class IndexingServiceImpl implements IndexingService {
 
     private Document getHtmlDocumentByUrl(String url) throws IOException, InterruptedException {
         Thread.sleep(1500);
-        return HtmlParser.getDocumentByUrl(url, bot);
+        return HtmlParser.getDocumentByUrl(url, configuration);
     }
 
     private int getPageStatusCode(Document document) {

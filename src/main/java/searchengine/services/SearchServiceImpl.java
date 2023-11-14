@@ -1,15 +1,22 @@
 package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import searchengine.config.SitesList;
-import searchengine.dto.indexing.*;
 import searchengine.dto.search.SearchData;
 import searchengine.dto.search.SearchRequest;
 import searchengine.dto.search.SearchResponse;
 import searchengine.dto.search.SnippetData;
 import searchengine.model.*;
+import searchengine.parsers.HtmlParser;
+import searchengine.parsers.LemmaFinder;
+import searchengine.repository.LemmaRepository;
+import searchengine.repository.PageRepository;
+import searchengine.repository.SiteRepository;
+
 import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -25,6 +32,7 @@ public class SearchServiceImpl implements SearchService {
     private final LemmaRepository lemmaRepository;
     private final SitesList sitesList;
     private LemmaFinder lemmaFinder;
+    private final Logger logger = LogManager.getLogger("indexingServiceLogger");
     private static final int FREQUENCY_OCCURRENCE_MAX_PERCENT = 90;
     private static final int MAX_SEARCH_RESULT_LENGTH = 200;
     private int maxLengthOfSnippetPhrase = 0;
@@ -38,23 +46,27 @@ public class SearchServiceImpl implements SearchService {
     }
 
     @Override
-    public SearchResponse search(SearchRequest request) throws IOException {
+    public SearchResponse search(SearchRequest request)  {
         SearchResponse response = getSearchResponseBySearchRequestCorrectness(request);
         if (!response.isResult()) {
             return response;
         }
-        Set<String> lemmas = getLemmasFromWords(request.getQuery());
-        List<Site> sites = getSitesForSearch(request.getSiteUrl());
-        List<Lemma> lemmasEntities = getLemmasEntities(lemmas, sites);
-        if (lemmasEntities.isEmpty()) {
-            response.setCount(0);
-            response.setData(getSearchDataArray(new ArrayList<>(), lemmas, request));
-            return response;
+        try {
+            Set<String> lemmas = getLemmasFromWords(request.getQuery());
+            List<Site> sites = getSitesForSearch(request.getSiteUrl());
+            List<Lemma> lemmasEntities = getLemmasEntities(lemmas, sites);
+            if (lemmasEntities.isEmpty()) {
+                response.setCount(0);
+                response.setData(getSearchDataArray(new ArrayList<>(), lemmas, request));
+                return response;
+            }
+            lemmas = getLemmasFromLemmaEntities(lemmasEntities);
+            List<Page> matchingPages = getMatchingPages(lemmasEntities, lemmas.size(), sites);
+            response.setCount(matchingPages.size());
+            response.setData(getSearchDataArray(matchingPages, lemmas, request));
+        } catch (IOException exception) {
+            logger.error(exception.getMessage());
         }
-        lemmas = getLemmasFromLemmaEntities(lemmasEntities);
-        List<Page> matchingPages = getMatchingPages(lemmasEntities, lemmas.size(), sites);
-        response.setCount(matchingPages.size());
-        response.setData(getSearchDataArray(matchingPages, lemmas, request));
         return response;
     }
 

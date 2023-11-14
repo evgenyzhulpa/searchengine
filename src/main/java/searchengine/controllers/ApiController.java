@@ -54,7 +54,7 @@ public class ApiController {
                                                  @RequestParam(name = "site", required = false,
                                                          defaultValue = "All") String site,
                                                  @RequestParam(name = "offset", defaultValue = "0") int offset,
-                                                 @RequestParam(name = "limit", defaultValue = "2") int limit) throws IOException {
+                                                 @RequestParam(name = "limit", defaultValue = "2") int limit) {
         SearchRequest request = new SearchRequest(query, site, offset, limit);
         return ResponseEntity.ok(searchService.search(request));
     }

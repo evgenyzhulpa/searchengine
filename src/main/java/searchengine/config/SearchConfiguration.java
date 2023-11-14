@@ -10,8 +10,8 @@ import org.springframework.stereotype.Component;
 @Setter
 @Component
 @ConfigurationProperties(prefix = "search-settings")
-public class SearchBot {
+public class SearchConfiguration {
     @Value("${search-settings.user-agent}")
-    private String name;
+    private String userAgentName;
     private String referrer;
 }

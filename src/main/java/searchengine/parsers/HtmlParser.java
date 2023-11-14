@@ -1,9 +1,9 @@
-package searchengine.dto.indexing;
+package searchengine.parsers;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
-import searchengine.config.SearchBot;
+import searchengine.config.SearchConfiguration;
 
 import java.io.IOException;
 
@@ -11,9 +11,9 @@ import static org.jsoup.Connection.Response;
 
 public class HtmlParser {
 
-    public static Document getDocumentByUrl(String url, SearchBot bot) throws IOException {
+    public static Document getDocumentByUrl(String url, SearchConfiguration bot) throws IOException {
         return Jsoup.connect(url)
-                .userAgent(bot.getName())
+                .userAgent(bot.getUserAgentName())
                 .referrer(bot.getReferrer())
                 .get();
     }

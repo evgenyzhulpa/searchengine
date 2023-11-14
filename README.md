@@ -24,5 +24,6 @@
 - 5. индексация отдельной страницы сайта:
 ![индексация отдельной страницы](https://github.com/evgenyzhulpa/searchengine/assets/120999337/fe24f22a-f12d-4658-b04f-ab1be42604af)
 - 6. выполнение поиска по сайтам:
-![использование поискового запроса](https://github.com/evgenyzhulpa/searchengine/assets/120999337/cc22213d-2761-4893-b491-1f062f8857e2)
+![выполнение поискового запроса](https://github.com/evgenyzhulpa/searchengine/assets/120999337/761aa468-b658-42fe-97e5-957798bd3801)
+
 

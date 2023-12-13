@@ -19,7 +19,7 @@ server:
 spring:
   datasource:
       username: root
-      password: girmo$45
+      password: '#Vudach3'
       url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true
   jpa:
       properties:

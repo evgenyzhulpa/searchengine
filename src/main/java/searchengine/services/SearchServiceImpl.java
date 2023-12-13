@@ -41,7 +41,7 @@ public class SearchServiceImpl implements SearchService {
         try {
             lemmaFinder = LemmaFinder.getInstance();
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            logger.error(e.getMessage());
         }
     }
 

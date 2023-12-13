@@ -29,7 +29,6 @@ public class StatisticsServiceImpl implements StatisticsService {
     @Override
     public StatisticsResponse getStatistics() {
         StatisticsResponse response = new StatisticsResponse();
-
         response.setStatistics(getStatisticsData());
         response.setResult(true);
         return response;

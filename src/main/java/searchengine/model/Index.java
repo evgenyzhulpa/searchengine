@@ -19,5 +19,5 @@ public class Index {
     @JoinColumn(name = "lemma_id", nullable = false)
     private Lemma lemma;
     @Column(name = "lemma_rank", nullable = false)
-    float rank;
+    private float rank;
 }
